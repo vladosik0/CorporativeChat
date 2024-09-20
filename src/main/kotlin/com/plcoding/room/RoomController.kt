@@ -1,7 +1,6 @@
 package com.plcoding.room
 
 import com.plcoding.data.MessageDataSource
-import com.plcoding.data.drivers
 import com.plcoding.data.model.Message
 import io.ktor.http.cio.websocket.*
 import kotlinx.serialization.encodeToString
@@ -13,12 +12,12 @@ class RoomController(
 ) {
     private val members = ConcurrentHashMap<String, Member>()
 
-    fun onJoin(
+     fun onJoin(
         username: String,
         sessionId: String,
         socket: WebSocketSession
     ){
-      if(members.containsKey(username)||username=="Система"){
+      if(members.containsKey(username)){
           throw MemberAlreadyExistsException()
       }
       members[username] = Member(
@@ -26,6 +25,7 @@ class RoomController(
           sessionId = sessionId,
           socket = socket
       )
+
     }
 
     suspend fun sendMessage(senderUsername: String, message: String){
@@ -34,29 +34,10 @@ class RoomController(
             username = senderUsername,
             timestamp = System.currentTimeMillis()
         )
-        var systemMessage:String = "Невірний ІПН. Спробуйте ще раз!"
-        drivers.forEach{driver ->
-            if(driver.individualNumber==message){
-                var describeWorkResult = if(driver.isOverspending) "перевитрати" else "економія"
-                systemMessage = "За ІПН №${driver.individualNumber} є" +
-                        " $describeWorkResult ${driver.liters}L палива."
-                if(driver.isOverspending){
-                    systemMessage+=" Призначений штраф у розмірі ${5*driver.liters*driver.hryvnasPerLiter} грн."
-                }
-            }
-        }
-        val systemMessageEntity = Message(
-            text = systemMessage,
-            username = "Система",
-            timestamp = System.currentTimeMillis()+1
-        )
         messageDataSource.insertMessage(messageEntity)
-        messageDataSource.insertMessage(systemMessageEntity)
-        members.values.forEach{member ->
+        members.values.forEach { member ->
             val parsedMessage = Json.encodeToString(messageEntity)
             member.socket.send(Frame.Text(parsedMessage))
-            val parsedSystemMessage = Json.encodeToString(systemMessageEntity)
-            member.socket.send(Frame.Text(parsedSystemMessage))
         }
     }
 
